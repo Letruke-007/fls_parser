@@ -3,7 +3,7 @@
 
 import unittest
 
-from app.parser import normalize_account_holder_name, parse_address
+from app.parser import _extract_header_fields, normalize_account_holder_name, parse_address
 
 
 class ParseAddressTests(unittest.TestCase):
@@ -30,6 +30,41 @@ class ParseAddressTests(unittest.TestCase):
         self.assertEqual(result["house"], "15")
         self.assertEqual(result["apartment"], "104")
         self.assertEqual(result["full"], "б-р Новочеркасский, дом № 15, кв. 104")
+
+    def test_does_not_parse_structure_from_locking_device_word(self) -> None:
+        result = parse_address("Перерва ул., дом 6, кв. 92 Запирающее устройство")
+
+        self.assertEqual(result["street"], "ул. Перерва")
+        self.assertEqual(result["house"], "6")
+        self.assertIsNone(result["structure"])
+        self.assertEqual(result["apartment"], "92")
+        self.assertEqual(result["full"], "ул. Перерва, дом № 6, кв. 92")
+
+
+class ExtractHeaderFieldsTests(unittest.TestCase):
+    def test_stops_before_split_month_header(self) -> None:
+        lines = [
+            "ВЫПИСКА",
+            "Ф",
+            ".И.",
+            "О.",
+            "Васильев",
+            "Петр",
+            "Иванович",
+            "Адрес:",
+            "Перерва",
+            "ул.,",
+            "дом 6,",
+            "кв. 92",
+            "Ме",
+            "сяц Год",
+            "Сод.",
+        ]
+
+        name, address = _extract_header_fields(lines)
+
+        self.assertEqual(name, "Васильев Петр Иванович")
+        self.assertEqual(address, "Перерва ул., дом 6, кв. 92")
 
 
 class NormalizeAccountHolderNameTests(unittest.TestCase):

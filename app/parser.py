@@ -237,10 +237,36 @@ def _clean_joined_text(tokens: Iterable[str]) -> str:
     return text
 
 
+def _alpha_key(value: str) -> str:
+    return "".join(ch for ch in value.lower() if ch.isalpha())
+
+
+def _is_table_header_line(line: str, next_line: Optional[str] = None) -> bool:
+    key = _alpha_key(line)
+    if key.startswith("месяц"):
+        return True
+    if key == "ме" and next_line:
+        return _alpha_key(next_line).startswith("сяц")
+    return False
+
+
+def _strip_table_tail_from_address(value: str) -> str:
+    normalized = normalize_whitespace(value)
+    patterns = (
+        r"\bМе\s*сяц\b.*$",
+        r"\bМесяц\b.*$",
+        r"\bГод\s+Сод\b.*$",
+    )
+    for pattern in patterns:
+        normalized = re.sub(pattern, "", normalized, flags=re.IGNORECASE)
+    return normalized.strip(" ,;:")
+
+
 def _extract_header_fields(lines: List[str]) -> Tuple[Optional[str], Optional[str]]:
     header_lines: List[str] = []
-    for line in lines:
-        if line.startswith("Месяц"):
+    for idx, line in enumerate(lines):
+        next_line = lines[idx + 1] if idx + 1 < len(lines) else None
+        if _is_table_header_line(line, next_line):
             break
         header_lines.append(line)
 
@@ -255,7 +281,7 @@ def _extract_header_fields(lines: List[str]) -> Tuple[Optional[str], Optional[st
         return None, None
 
     account_holder_name = normalize_account_holder_name(match.group("name").strip(" ,;:"))
-    address_raw = normalize_address_ocr_noise(match.group("address").strip(" ,;:"))
+    address_raw = normalize_address_ocr_noise(_strip_table_tail_from_address(match.group("address")))
     return account_holder_name or None, address_raw or None
 
 
@@ -485,7 +511,7 @@ def parse_address(raw: Optional[str]) -> Dict[str, Optional[str]]:
     structure = clean_optional_token(
         next((m.group("value") for m in [
             re.search(r"строение\s*(?P<value>[\w/-]+)", normalized, flags=re.IGNORECASE),
-            re.search(r"стр\.?\s*(?P<value>[\w/-]+)", normalized, flags=re.IGNORECASE),
+            re.search(r"\bстр\.?\s*(?P<value>[\w/-]+)", normalized, flags=re.IGNORECASE),
         ] if m), None)
     )
     building = clean_optional_token(
@@ -508,7 +534,7 @@ def parse_address(raw: Optional[str]) -> Dict[str, Optional[str]]:
         r"(?:,\s*|\s+)корп\.?\s*[\w/-]+.*$",
         r"(?:,\s*|\s+)корпус\s*[\w/-]+.*$",
         r"(?:,\s*|\s+)строение\s*[\w/-]+.*$",
-        r"(?:,\s*|\s+)стр\.?\s*[\w/-]+.*$",
+        r"(?:,\s*|\s+)\bстр\.?\s*[\w/-]+.*$",
         r"(?:,\s*|\s+)кв\s*\.?\s*[\w/-]+.*$",
         r"(?:,\s*|\s+)квартира\s*[\w/-]+.*$",
     ):
